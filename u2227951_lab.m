@@ -1,4 +1,4 @@
-function Answers = ES3C5_2025_2026_lab_template()
+function Answers = u2227951_lab()
 %% ES3C5 lab submission template v2.0
 %
 % Please DO NOT change this header
@@ -71,16 +71,45 @@ function Q1 = Q1Fun()
     %% Start your Q1 code here
     % DO NOT REMOVE OR MOVE THIS IF STATEMENT
     % WRITE YOUR CODE INSIDE THIS IF STATEMENT
-    if exist('u<ID>_lab_Audio.mat', 'file') == 2 ... % Update with your student ID
-      
-        load('u<ID>_lab_Audio.mat', 'audioRaw') % Update with your student ID
+    if exist('u2227951_lab_Audio.mat', 'file') == 2 ... % Update with your student ID      
+        load('u2227951_lab_Audio.mat', 'audioRaw'); % Update with your student ID
         
-        
-        
+        % 1a)
+        Q1.audioInput = audioRaw;
 
+        % 1b)
+        N = length(Q1.audioInput);
+        Fs = 22050;
+        t = [0:N-1]' / Fs; 
+        n1 = 350; % Hz
+        Q1.noiseSignal = sin(2*pi*n1*t);
+        
+        Q1.audioNoisy = Q1.audioInput + Q1.noiseSignal;
+        
+        Q1.FFTNoisy = fft(Q1.audioNoisy);
 
+        f = (0:N-1) * (Fs / N);          % Hz
+        mag = abs(Q1.FFTNoisy);          % magnitude (no scaling)
         
+        figure;
+        plot(f, mag);
+        xlim([0 Fs]);                    % visible range [0, 22050)
+        xlabel('Frequency (Hz)');
+        ylabel('Magnitude');
+        title('Magnitude spectrum of Q1.audioNoisy');
         
+        % (v) Label the largest frequency component (peak)
+        % If you want to ignore DC (0 Hz), use 2:N instead of 1:N.
+        [~, idx] = max(mag(2:end));
+        idx = idx + 1;                   % because we searched from 2:end
+        peakFreq = f(idx);
+        peakMag  = mag(idx);
+        
+        hold on;
+        plot(peakFreq, peakMag, 'o');    % marker on the peak
+        text(peakFreq, peakMag, sprintf('  Peak: %.1f Hz', peakFreq), ...
+            'VerticalAlignment', 'bottom');
+        hold off;           
     end
 
 end
