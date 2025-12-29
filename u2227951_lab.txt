@@ -1,0 +1,18 @@
+ES3C5 Coursework Assignment parameters for student with Student ID: 2227951
+DO NOT USE THESE PARAMETERS IF YOUR STUDENT NUMBER IS NOT ID: 2227951
+
+Question 1:
+For Question 1 part (b), noise frequency n1: 350 Hz 
+
+
+Question 2:
+For Question 2, sampling frequency fs: 650 Hz, cut-off frequency fc:65 Hz,
+The filter should have maximum attenuation As: 60 dB for frequencies beyond the the stop band edge frequency fsb: 91 Hz and a passband ripple rp: 0.2 dB ,
+
+
+Question 3:
+Use output vector P from your signal file u2227951_lab_signals.mat,
+Your constant sampling interval is Ts3 = 0.045
+Your pressure profile is of the form P(t) = A3*(1-exp(-0.14*t)) + B3*exp(-0.23*t)*cos(14.74*t) + C3*sin(51.97*t) + N(t)
+
+
