@@ -74,135 +74,144 @@ function Q1 = Q1Fun()
     if exist('u2227951_lab_Audio.mat', 'file') == 2
         load('u2227951_lab_Audio.mat', 'audioRaw');
         
-        % 1a) Load audio
+        % 1a) Loading Recording
         Q1.audioInput = audioRaw;
         
-        % 1b) Generate noise and contaminate signal
+        % 1b) Noise Contamination and FFT Analysis
+        % Define parameters for noise signal
         N = length(Q1.audioInput);
-        Fs = 22050;
-        t = (0:N-1)' / Fs;
-        n1 = 350;
+        n1 = 350; % From u2227951_lab.txt
+        f_s = 22050; % Sampling frequency (used to record audio)
+        t = (0:N-1)' / f_s; % N time points in seconds
         
-        Q1.noiseSignal = sin(2*pi*n1*t);
-        Q1.audioNoisy = Q1.audioInput + Q1.noiseSignal;
-        Q1.FFTNoisy = fft(Q1.audioNoisy);
+        % Create the noise signal
+        Q1.noiseSignal = sin(2*pi*n1*t); 
+    
+        % Contaminate the recorded signal with the noise signal
+        Q1.audioNoisy = Q1.audioInput + Q1.noiseSignal; 
+    
+        % FFT analysis of the contaminated signal
+        Q1.FFTNoisy = fft(Q1.audioNoisy); 
         
-        % Compute frequency axis and magnitude
-        f = (0:N-1) * (Fs / N);
-        mag = abs(Q1.FFTNoisy);
+        f_k = (0:N-1) * (f_s / N); % Compute frequency axis. Each bin k corresponds to frequency k * (f_s / N)
+        mag = abs(Q1.FFTNoisy); 
         
         % Plot magnitude spectrum with range [0, 22050) Hz
         figure;
-        plot(f, mag);
-        xlim([0 Fs]);
+        plot(f_k, mag);
+        xlim([0 f_s]);
         xlabel('Frequency (Hz)');
         ylabel('Magnitude');
-        title('Magnitude spectrum of Q1.audioNoisy');
+        title('Magnitude Spectrum of Q1.audioNoisy');
+        grid on;
         
         % Find and label the largest peak (excluding DC)
-        [peakMag, idx] = max(mag(2:end));
-        idx = idx + 1;
-        peakFreq = f(idx);
+        [mag_peak, peak_index] = max(mag(2:end));
+        peak_index = peak_index + 1; % Compensate for skipping DC component
+        f_peak = f_k(peak_index);
+        saveas(gcf, 'images/1b_magnitude_spectrum.png');
         
+        % Label the peak on the plot
         hold on;
-        plot(peakFreq, peakMag, 'ro', 'MarkerSize', 10);
-        text(peakFreq, peakMag, sprintf('  %.1f Hz', peakFreq), 'VerticalAlignment', 'bottom');
+        plot(f_peak, mag_peak, 'ro');
+        text(f_peak, mag_peak, sprintf('  %.1f Hz', f_peak));
         hold off;
+        saveas(gcf, 'images/1b_magnitude_spectrum_labelled.png');
+    
+        % 1c) FIR Filter design to isolate the largest noise frequency
+        % Define filter parameters
+        f_nyq = f_s / 2; % Nyquist frequency needed for filter
 
-        % 1c) FIR Filter Design
-        % Band-stop filter to suppress 350 Hz noise
-        % Stopband: 300-400 Hz to remove the 350 Hz noise component
-        % Passbands: 0-300 Hz and 400-11025 Hz with unity gain
+        % Need to filter out 350 Hz so I tested lower and upper bounds around that to get these values 
+        w_cutoff_lower = 310;
+        w_cutoff_upper = 380;
+        w_n = [w_cutoff_lower w_cutoff_upper] / f_nyq; % Normalised stopband edges 
         
-        Fnyq = Fs / 2;
-        Wn = [300 400] / Fnyq;
-        filterOrder = 1000;
-        
-        Q1.h = fir1(filterOrder, Wn, 'stop');
+        % Need to ensure the transition is sharp enough to filter out the 350 Hz component
+        filter_order = 2100;
+
+        % Blackman window best suits our needs
+        win = blackman(filter_order + 1);
+        Q1.h = fir1(filter_order, w_n, 'stop', win);
+        Q1.filteredAudio = filter(Q1.h, 1, Q1.audioNoisy);
+        %soundsc(Q1.filteredAudio, f_s);
         
         % Plot frequency response
         figure;
-        freqz(Q1.h, 1, 4096, Fs);
-        title('FIR Band-Stop Filter Frequency Response');
-        saveas(gcf, 'Q1c_filter_response.png');
+        freqz(Q1.h, 1, N, f_s);
+        title('FIR Bandstop Filter Frequency Response');
         
-        % 1c v) Apply filter
-        Q1.filteredAudio = filter(Q1.h, 1, Q1.audioNoisy);
-        
-        % 1c vi) Plot noisy and filtered signals
-        figure;
-        t_plot = (0:N-1) / Fs;
-        
+        % Access the magnitude subplot (top) to add annotations
         subplot(2,1,1);
-        plot(t_plot, Q1.audioNoisy);
+        ylim auto;
+        hold on;
+        xline(w_cutoff_lower/1000, '--r', sprintf('f_{c (lower)} = %d Hz', w_cutoff_lower), 'LabelOrientation', 'aligned', 'LabelHorizontalAlignment', 'left', 'LabelVerticalAlignment', 'middle', 'FontSize', 10);
+        xline(w_cutoff_upper/1000, '--r', sprintf('f_{c (upper)} = %d Hz', w_cutoff_upper), 'LabelOrientation', 'aligned', 'LabelHorizontalAlignment', 'right', 'LabelVerticalAlignment', 'middle', 'FontSize', 10);
+        hold off;
+        
+        % Add legend or annotation for stopband region
+        ylabel('Magnitude (dB)');
+        title('FIR Bandstop Filter Frequency Response');
+        
+        saveas(gcf, 'images/1c_freqz.png');
+        
+        % Plot noisy and filtered signals for comparison
+        figure;
+        subplot(2,1,1);
+        plot(t, Q1.audioNoisy);
         xlabel('Time (s)');
         ylabel('Amplitude');
         title('Noisy Audio Signal');
         
         subplot(2,1,2);
-        plot(t_plot, Q1.filteredAudio);
+        plot(t, Q1.filteredAudio);
         xlabel('Time (s)');
         ylabel('Amplitude');
         title('Filtered Audio Signal');
-
-        % 1d) Flanger Effect
-        % Parameters
-        maxDelay = 0.003;       % Maximum delay in seconds (3 ms)
-        rate = 0.5;             % LFO frequency in Hz (speed of sweep)
-        depth = 0.002;          % Depth of modulation in seconds (2 ms)
-        mix = 0.7;              % Mix level (0 to 1)
+        saveas(gcf, 'images/1c_contaminated_vs_filtered.png');
+    
+        % 1d) Apply an Effect of Your Choice (Echo)
+        % Define echo parameters
+        delay_time = 0.3; % Delay in seconds (300 ms for audible echo)
+        decay = 0.5; % Decay factor for each echo (0 to 1)
+        num_echoes = 3; % Number of echo repetitions
         
-        % Convert to samples
-        maxDelaySamp = round(maxDelay * Fs);
-        depthSamp = round(depth * Fs);
+        % Convert delay time to samples
+        delay_samples = round(delay_time * f_s);
         
-        % Create output array (same length as input)
-        Q1.audioCustom = zeros(size(Q1.audioInput));
+        % Initialise output with original signal
+        Q1.audioCustom = Q1.audioInput;
         
-        % Generate LFO (low frequency oscillator)
-        t = (0:N-1)' / Fs;
-        lfo = depthSamp * sin(2 * pi * rate * t);
-        
-        % Apply flanger effect
-        for n = 1:N
-            % Calculate current delay (must be positive integer)
-            currentDelay = maxDelaySamp + round(lfo(n));
+        % Apply multiple echoes
+        % y[n] = x[n] + a*x[n-D] + a^2*x[n-2D] + a^3*x[n-3D] + ...
+        for echo = 1:num_echoes
+            echo_delay = echo * delay_samples;
+            echo_amplitude = decay^echo;
             
-            % Ensure we don't read before the start of the signal
-            if (n - currentDelay) > 0
-                Q1.audioCustom(n) = Q1.audioInput(n) + mix * Q1.audioInput(n - currentDelay);
-            else
-                Q1.audioCustom(n) = Q1.audioInput(n);
+            for n = (echo_delay + 1):N
+                Q1.audioCustom(n) = Q1.audioCustom(n) + echo_amplitude * Q1.audioInput(n - echo_delay);
             end
         end
         
-        % Normalise to prevent clipping
+        % Normalise output to prevent clipping
         Q1.audioCustom = Q1.audioCustom / max(abs(Q1.audioCustom));
         
-        % Plot comparison
+        % Plot original and echo signals for comparison
         figure;
-        t_plot = (0:N-1) / Fs;
-        
         subplot(2,1,1);
-        plot(t_plot, Q1.audioInput);
+        plot(t, Q1.audioInput);
         xlabel('Time (s)');
         ylabel('Amplitude');
         title('Original Audio Signal');
         
         subplot(2,1,2);
-        plot(t_plot, Q1.audioCustom);
+        plot(t, Q1.audioCustom);
         xlabel('Time (s)');
         ylabel('Amplitude');
-        title('Audio with Flanger Effect');
-        
-        saveas(gcf, 'Q1d_flanger_effect.png');
-        
-        % Play the effect
-        disp('Playing original...');
-        soundsc(Q1.audioInput, Fs);
-        pause(6);
-        disp('Playing with flanger...');
-        soundsc(Q1.audioCustom, Fs);
+        title('Audio with Echo Effect');
+
+        saveas(gcf, 'images/1d_effect.png')
+        %soundsc(Q1.audioCustom, f_s);
     end
 
 end
@@ -227,67 +236,50 @@ function Q2 = Q2Fun()
     % WRITE YOUR CODE INSIDE THIS IF STATEMENT
 
     % Given specifications
-    Fs = 650;           % Sampling frequency (Hz)
-    fc = 65;            % Passband edge frequency (Hz)
-    fsb = 91;           % Stopband edge frequency (Hz)
-    Rp = 0.2;           % Passband ripple (dB)
-    As = 60;            % Stopband attenuation (dB)
+    f_s = 650; % Sampling frequency (Hz)
+    f_c = 65; % Passband edge frequency (Hz)
+    f_sb = 91; % Stopband edge frequency (Hz)
+    r_p = 0.2; % Passband ripple (dB)
+    a_s = 60; % Stopband attenuation (dB)
     
     % Normalise frequencies (divide by Nyquist frequency)
-    Fnyq = Fs / 2;
-    Wp = fc / Fnyq;     % Normalised passband frequency
-    Ws = fsb / Fnyq;    % Normalised stopband frequency
+    f_nyq = f_s / 2;
+    w_p = f_c / f_nyq; % Normalised passband frequency
+    w_s = f_sb / f_nyq; % Normalised stopband frequency
     
-    % Q2(a) Calculate minimum filter order and design filter
+    % 2a) Calculate minimum filter order and design filter
     % Using Chebyshev Type I
-    [n, Wn] = cheb1ord(Wp, Ws, Rp, As);
-    [Q2.b, Q2.a] = cheby1(n, Rp, Wn, 'low');
+    [n, w_n] = cheb1ord(w_p, w_s, r_p, a_s);
+    [Q2.b, Q2.a] = cheby1(n, r_p, w_n, 'low');
     Q2.filterOrder = n;
     
-    % Display results
-    fprintf('Filter Order: %d\n', Q2.filterOrder);
-    fprintf('Normalised cutoff frequency: %.4f\n', Wn);
-    
-    % Q2(b) Plot frequency response
+    % 2b) Plot frequency response
     figure;
-    [H, f] = freqz(Q2.b, Q2.a, 1024, Fs);
+    freqz(Q2.b, Q2.a, 1024, f_s);
     
     % Magnitude response
     subplot(2,1,1);
-    plot(f, 20*log10(abs(H)), 'LineWidth', 1.5);
-    xlabel('Frequency (Hz)');
-    ylabel('Magnitude (dB)');
     title('Chebyshev Type I Lowpass Filter - Magnitude Response');
     grid on;
+
+    % Lines to mark cutoffs and stopband attenuation
     hold on;
-    
-    % Add labels for passband and stopband
-    xline(fc, 'g--', 'LineWidth', 1.5);
-    xline(fsb, 'r--', 'LineWidth', 1.5);
-    yline(-Rp, 'm:', 'LineWidth', 1.5);
-    yline(-As, 'b:', 'LineWidth', 1.5);
+    xline(f_c, 'g--');
+    xline(f_sb, 'r--');
+    yline(-a_s, 'r:');
     
     % Add text labels instead of inline labels
-    text(fc+5, -10, 'f_c = 65 Hz', 'Color', 'g');
-    text(fsb+5, -30, 'f_{sb} = 91 Hz', 'Color', 'r');
-    text(200, -Rp-5, 'Passband Ripple = -0.2 dB', 'Color', 'm');
-    text(200, -As+5, 'Stopband Atten. = -60 dB', 'Color', 'b');
-    
+    text(f_c+5, -10, 'f_c = 65 Hz', 'Color', 'g');
+    text(f_sb+5, -30, 'f_{sb} = 91 Hz', 'Color', 'r');
+    text(200, -a_s+5, 'Stopband Attenuation = 60 dB', 'Color', 'r');
     hold off;
-    ylim([-80 5]);
-    xlim([0 Fs/2]);
-    
+
     % Phase response
     subplot(2,1,2);
-    plot(f, angle(H) * 180/pi, 'LineWidth', 1.5);
-    xlabel('Frequency (Hz)');
-    ylabel('Phase (degrees)');
     title('Chebyshev Type I Lowpass Filter - Phase Response');
     grid on;
-    xlim([0 Fs/2]);
-    
-    saveas(gcf, 'Q2_filter_response.png');
-       
+
+    saveas(gcf, 'images/2b_freqz.png')
 end
 
 %% Q3 Estimating Unknown Signal
@@ -315,93 +307,79 @@ function Q3 = Q3Fun()
         load('u2227951_lab_signals.mat', 'P');
         
         % Sampling parameters
-        Ts = 0.045;
-        N = length(P);
-        t = (0:N-1)' * Ts;
-        
-        % (a) Construct the observation matrix
+        T_s = 0.045;
+        n = length(P);
+        t = (0:n-1)' * T_s;
+    
+        % 3a) Construct the Linear Model
         % Model: P(t) = A*(1-exp(-0.14*t)) + B*exp(-0.23*t)*cos(14.74*t) + C*sin(51.97*t)
-        % Theta = [basis_A, basis_B, basis_C]
-        
-        basis_A = 1 - exp(-0.14 * t);
-        basis_B = exp(-0.23 * t) .* cos(14.74 * t);
-        basis_C = sin(51.97 * t);
-        
-        Q3.Obs = [basis_A, basis_B, basis_C];
-        
-        % (b) Parameter estimation using least squares
-        % P = Theta * param + noise
-        % param = (Theta' * Theta)^(-1) * Theta' * P
+        basis_a = 1 - exp(-0.14 * t);
+        basis_b = exp(-0.23 * t) .* cos(14.74 * t);
+        basis_c = sin(51.97 * t);
+        Q3.Obs = [basis_a, basis_b, basis_c];
+    
+        % 3b) Parameter Estimation
         Q3.param = Q3.Obs \ P;
-        
-        % Display estimated parameters
-        fprintf('Estimated parameters:\n');
-        fprintf('A = %.4f\n', Q3.param(1));
-        fprintf('B = %.4f\n', Q3.param(2));
-        fprintf('C = %.4f\n', Q3.param(3));
-        
-        % (c) Pressure prediction
+    
+        % 3c) Pressure Prediction
         Q3.yHat = Q3.Obs * Q3.param;
-        
-        % (d) Mean squared error
+    
+        % 3d) Model Error Calculation
         Q3.mse = mean((P - Q3.yHat).^2);
-        fprintf('Mean Squared Error: %.6f\n', Q3.mse);
-        
-        % (e) Frequency domain analysis
-        % i) FFT of noisy pressure data
+    
+        % 3e) Frequency Domain Analysis
+        % FFT of noisy pressure data
         Q3.yFFT = fft(P);
-        
-        % ii) FFT of predicted pressure data
+    
+        % FFT of predicted pressure data
         Q3.yHatFFT = fft(Q3.yHat);
-        
-        % iii) Frequency vector
-        Fs = 1 / Ts;
-        Q3.fRange = (0:N-1)' * (Fs / N);
-        
-        % iv) Plot magnitude spectra
+    
+        % Frequency vector
+        f_s = 1 / T_s;
+        Q3.fRange = (0:n-1)' * (f_s / n);
+    
+        % Plot magnitude spectra
         figure;
-        plot(Q3.fRange, abs(Q3.yFFT), 'b', 'DisplayName', 'Noisy Data (P)');
+        plot(Q3.fRange, abs(Q3.yFFT), 'b-', 'LineWidth', 1.2, 'DisplayName', 'Noisy Data (P)');
         hold on;
-        plot(Q3.fRange, abs(Q3.yHatFFT), 'r--', 'DisplayName', 'Predicted (yHat)');
+        plot(Q3.fRange, abs(Q3.yHatFFT), 'r--', 'LineWidth', 1.5, 'DisplayName', 'Predicted (yHat)');
         hold off;
-        
-        xlim([0 Fs]);
+    
+        xlim([0 f_s]);
         xlabel('Frequency (Hz)');
         ylabel('Magnitude');
-        title('FFT Magnitude Spectra: Noisy vs Predicted Pressure');
+        title('FFT Magnitude Spectra of Noisy vs Predicted Pressure');
         legend('Location', 'best');
         grid on;
-        
+    
         % Label key spectral peaks
-        % Find peaks in the predicted signal (cleaner)
-        halfN = floor(N/2);
-        [pks, locs] = findpeaks(abs(Q3.yHatFFT(1:halfN)), 'MinPeakHeight', max(abs(Q3.yHatFFT))*0.1);
+        half_n = floor(n/2);
+        mag = abs(Q3.yFFT(1:half_n));
+        [mag_peak, peak_index] = findpeaks(mag, 'MinPeakHeight', max(mag)*0.1);
         
         hold on;
-        for i = 1:length(locs)
-            peakFreq = Q3.fRange(locs(i));
-            peakMag = pks(i);
-            plot(peakFreq, peakMag, 'ko', 'MarkerSize', 8);
-            text(peakFreq, peakMag*1.1, sprintf('%.2f Hz', peakFreq), 'HorizontalAlignment', 'center');
+        for i = 1:length(peak_index)
+            f_peak = Q3.fRange(peak_index(i));
+            plot(f_peak, mag_peak(i), 'ko', 'MarkerSize', 8);
+            text(f_peak, mag_peak(i), sprintf('  %.2f Hz', f_peak));
         end
         hold off;
         
-        saveas(gcf, 'Q3_fft_comparison.png');
+        % Save FFT plot
+        saveas(gcf, 'images/3e_fft.png');
         
-        % Optional: Time domain comparison plot
+        % Time domain comparison plot for analysis
         figure;
-        plot(t, P, 'b', 'DisplayName', 'Noisy Data (P)');
+        plot(t, P, 'b-', 'LineWidth', 1, 'DisplayName', 'Noisy Data (P)');
         hold on;
-        plot(t, Q3.yHat, 'r', 'LineWidth', 1.5, 'DisplayName', 'Predicted (yHat)');
+        plot(t, Q3.yHat, 'r--', 'LineWidth', 1.5, 'DisplayName', 'Predicted (yHat)');
         hold off;
+    
         xlabel('Time (s)');
         ylabel('Pressure (bar)');
         title('Time Domain: Noisy vs Predicted Pressure');
         legend('Location', 'best');
         grid on;
-        
-        saveas(gcf, 'Q3_time_comparison.png');
     end
-
 end
 
